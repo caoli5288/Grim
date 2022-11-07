@@ -40,6 +40,7 @@ import com.github.retrooper.packetevents.util.Vector3f;
 import com.github.retrooper.packetevents.util.Vector3i;
 import com.github.retrooper.packetevents.wrapper.PacketWrapper;
 import com.github.retrooper.packetevents.wrapper.play.client.*;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerAcknowledgeBlockChanges;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerBlockChange;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetSlot;
 import org.bukkit.util.Vector;
@@ -417,9 +418,9 @@ public class CheckManagerListener extends PacketListenerAbstract {
 
         if (event.getPacketType() == PacketType.Play.Client.PLAYER_DIGGING) {
             WrapperPlayClientPlayerDigging dig = new WrapperPlayClientPlayerDigging(event);
+            WrappedBlockState block = player.compensatedWorld.getWrappedBlockStateAt(dig.getBlockPosition());
 
             if (dig.getAction() == DiggingAction.FINISHED_DIGGING) {
-                WrappedBlockState block = player.compensatedWorld.getWrappedBlockStateAt(dig.getBlockPosition());
                 // Not unbreakable
                 if (block.getType().getHardness() != -1.0f) {
                     player.compensatedWorld.updateBlock(dig.getBlockPosition().getX(), dig.getBlockPosition().getY(), dig.getBlockPosition().getZ(), 0);
@@ -432,7 +433,13 @@ public class CheckManagerListener extends PacketListenerAbstract {
                 //Instant breaking, no damage means it is unbreakable by creative players (with swords)
                 if (damage >= 1) {
                     player.compensatedWorld.startPredicting();
-                    player.compensatedWorld.updateBlock(dig.getBlockPosition().getX(), dig.getBlockPosition().getY(), dig.getBlockPosition().getZ(), 0);
+                    if (player.getClientVersion().isNewerThanOrEquals(ClientVersion.V_1_13) && Materials.isWaterSource(player.getClientVersion(), block)) {
+                        // Vanilla uses a method to grab water flowing, but as you can't break flowing water
+                        // We can simply treat all waterlogged blocks or source blocks as source blocks
+                        player.compensatedWorld.updateBlock(dig.getBlockPosition(), StateTypes.WATER.createBlockState(CompensatedWorld.blockVersion));
+                    } else {
+                        player.compensatedWorld.updateBlock(dig.getBlockPosition().getX(), dig.getBlockPosition().getY(), dig.getBlockPosition().getZ(), 0);
+                    }
                     player.compensatedWorld.stopPredicting(dig);
                 }
             }
@@ -485,6 +492,11 @@ public class CheckManagerListener extends PacketListenerAbstract {
                     int face = player.compensatedWorld.getWrappedBlockStateAt(facePos).getGlobalId();
                     player.user.sendPacket(new WrapperPlayServerBlockChange(blockPlace.getPlacedBlockPos(), placed));
                     player.user.sendPacket(new WrapperPlayServerBlockChange(facePos, face));
+
+                    // Ends the client prediction introduced in 1.19+
+                    if (player.getClientVersion().isNewerThanOrEquals(ClientVersion.V_1_19)) {
+                        player.user.sendPacket(new WrapperPlayServerAcknowledgeBlockChanges(packet.getSequence()));
+                    }
 
                     // Stop inventory desync from cancelling place
                     if (packet.getHand() == InteractionHand.MAIN_HAND) {
