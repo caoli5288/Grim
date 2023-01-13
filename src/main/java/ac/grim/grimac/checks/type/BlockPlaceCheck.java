@@ -35,7 +35,7 @@ public class BlockPlaceCheck extends Check implements RotationCheck {
     @Override
     public void reload() {
         super.reload();
-        this.cancelVL = getConfig().getIntElse(getConfigName() + ".cancelVL", 5);
+        this.cancelVL = getConfig().getIntElse(getConfigName() + ".cancelvl", 5);
     }
 
     protected boolean shouldCancel() {
