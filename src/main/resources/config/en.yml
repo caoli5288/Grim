@@ -61,10 +61,25 @@ Phase:
   setbackvl: 1 # Glitching into blocks can allow wall climbing, plus this check is relatively stable
   decay: 0.005
 
+AirLiquidPlace:
+  cancelvl: 0
+
+FabricatedPlace:
+  cancelvl: 5
+
+FarPlace:
+  cancelvl: 5
+
+PositionPlace:
+  cancelvl: 5
+
+RotationPlace:
+  cancelvl: 5
+
 # Prediction-based no slow check
 # Grim accounts for buggy netcode here... hard to false even when spamming right click and offhand button
 # Much more stable than other anticheats, but please report any falses... I have fixed a ton of netcode issues here.
-NoSlow:
+NoSlowA:
   # How much of an offset is "cheating"
   # By default this is lower than other offs
   # Flags by 0.03-0.2 consistently with NoSlow on
@@ -90,6 +105,10 @@ TimerA:
   # Milliseconds that the player can accumulate for later use when they fall behind
   # Could potentially allow 1.8 fast use/fast heal/fast bow bypasses if set too high, 120 ms seems like a good balance
   drift: 120
+
+NegativeTimer:
+  # Number of milliseconds lost while moving before we should start flagging
+  drift: 1200
 
 # Same check method as TimerA, but for vehicles
 TimerVehicle:
@@ -125,6 +144,6 @@ experimental-checks: false
 
 # Grim sometimes cancels illegal packets such as with timer, after X packets in a second cancelled, when should
 # we simply kick the player? This is required as some packet limiters don't count packets cancelled by grim.
-packet-spam-threshold: 150
+packet-spam-threshold: 100
 
 config-version: 8

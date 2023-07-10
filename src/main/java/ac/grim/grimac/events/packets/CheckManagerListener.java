@@ -1,6 +1,7 @@
 package ac.grim.grimac.events.packets;
 
 import ac.grim.grimac.GrimAPI;
+import ac.grim.grimac.events.packets.patch.ResyncWorldUtil;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.*;
 import ac.grim.grimac.utils.blockplace.BlockPlaceResult;
@@ -43,6 +44,7 @@ import com.github.retrooper.packetevents.wrapper.play.client.*;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerAcknowledgeBlockChanges;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerBlockChange;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetSlot;
+import io.github.retrooper.packetevents.util.SpigotConversionUtil;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
@@ -152,6 +154,7 @@ public class CheckManagerListener extends PacketListenerAbstract {
             }
 
             if (player.gamemode != GameMode.CREATIVE) {
+                player.getInventory().markSlotAsResyncing(blockPlace);
                 if (hand == InteractionHand.MAIN_HAND) {
                     player.getInventory().inventory.setHeldItem(ItemStack.builder().type(ItemTypes.BUCKET).amount(1).build());
                 } else {
@@ -266,7 +269,9 @@ public class CheckManagerListener extends PacketListenerAbstract {
                 BlockPlace blockPlace = new BlockPlace(player, place.getHand(), blockPosition, place.getFace(), placedWith, getNearestHitResult(player, null, true));
 
                 // Right-clicking a trapdoor/door/etc.
-                if (Materials.isClientSideInteractable(blockPlace.getPlacedAgainstMaterial())) {
+                StateType placedAgainst = blockPlace.getPlacedAgainstMaterial();
+                if ((player.getClientVersion().isOlderThan(ClientVersion.V_1_8) && (placedAgainst == StateTypes.IRON_TRAPDOOR || placedAgainst == StateTypes.IRON_DOOR))
+                        || Materials.isClientSideInteractable(placedAgainst)) {
                     Vector3i location = blockPlace.getPlacedAgainstBlockLocation();
                     player.compensatedWorld.tickOpenable(location.getX(), location.getY(), location.getZ());
                     return;
@@ -296,7 +301,9 @@ public class CheckManagerListener extends PacketListenerAbstract {
 
             BlockPlace blockPlace = new BlockPlace(player, place.getHand(), blockPosition, face, placedWith, getNearestHitResult(player, null, true));
             // At this point, it is too late to cancel, so we can only flag, and cancel subsequent block places more aggressively
-            player.checkManager.onPostFlyingBlockPlace(blockPlace);
+            if (!player.compensatedEntities.getSelf().inVehicle()) {
+                player.checkManager.onPostFlyingBlockPlace(blockPlace);
+            }
 
             blockPlace.setInside(place.getInsideBlock().orElse(false));
 
@@ -423,7 +430,9 @@ public class CheckManagerListener extends PacketListenerAbstract {
             if (dig.getAction() == DiggingAction.FINISHED_DIGGING) {
                 // Not unbreakable
                 if (block.getType().getHardness() != -1.0f) {
+                    player.compensatedWorld.startPredicting();
                     player.compensatedWorld.updateBlock(dig.getBlockPosition().getX(), dig.getBlockPosition().getY(), dig.getBlockPosition().getZ(), 0);
+                    player.compensatedWorld.stopPredicting(dig);
                 }
             }
 
@@ -480,29 +489,32 @@ public class CheckManagerListener extends PacketListenerAbstract {
                     }
                 }
 
-                if (placedWith.getType().getPlacedType() != null || placedWith.getType() == ItemTypes.FIRE_CHARGE)
+                if ((placedWith.getType().getPlacedType() != null || placedWith.getType() == ItemTypes.FIRE_CHARGE) && !player.compensatedEntities.getSelf().inVehicle())
                     player.checkManager.onBlockPlace(blockPlace);
 
-                if (blockPlace.isCancelled()) { // The player tried placing blocks in air/water
+                if (blockPlace.isCancelled() || player.getSetbackTeleportUtil().shouldBlockMovement()) { // The player tried placing blocks in air/water
                     event.setCancelled(true);
-                    player.cancelledPackets.incrementAndGet();
+                    player.onPacketCancel();
 
                     Vector3i facePos = new Vector3i(packet.getBlockPosition().getX() + packet.getFace().getModX(), packet.getBlockPosition().getY() + packet.getFace().getModY(), packet.getBlockPosition().getZ() + packet.getFace().getModZ());
-                    int placed = player.compensatedWorld.getWrappedBlockStateAt(packet.getBlockPosition()).getGlobalId();
-                    int face = player.compensatedWorld.getWrappedBlockStateAt(facePos).getGlobalId();
-                    player.user.sendPacket(new WrapperPlayServerBlockChange(blockPlace.getPlacedBlockPos(), placed));
-                    player.user.sendPacket(new WrapperPlayServerBlockChange(facePos, face));
 
                     // Ends the client prediction introduced in 1.19+
-                    if (player.getClientVersion().isNewerThanOrEquals(ClientVersion.V_1_19)) {
+                    if (player.getClientVersion().isNewerThanOrEquals(ClientVersion.V_1_19) && PacketEvents.getAPI().getServerManager().getVersion().isNewerThanOrEquals(ServerVersion.V_1_19)) {
                         player.user.sendPacket(new WrapperPlayServerAcknowledgeBlockChanges(packet.getSequence()));
+                    } else { // The client isn't smart enough to revert changes
+                        ResyncWorldUtil.resyncPosition(player, packet.getBlockPosition());
+                        ResyncWorldUtil.resyncPosition(player, facePos);
                     }
 
                     // Stop inventory desync from cancelling place
-                    if (packet.getHand() == InteractionHand.MAIN_HAND) {
-                        player.user.sendPacket(new WrapperPlayServerSetSlot(0, player.getInventory().stateID, 36 + player.packetStateData.lastSlotSelected, player.getInventory().getHeldItem()));
-                    } else {
-                        player.user.sendPacket(new WrapperPlayServerSetSlot(0, player.getInventory().stateID, 45, player.getInventory().getOffHand()));
+                    if (player.bukkitPlayer != null) {
+                        if (packet.getHand() == InteractionHand.MAIN_HAND) {
+                            ItemStack mainHand = SpigotConversionUtil.fromBukkitItemStack(player.bukkitPlayer.getInventory().getItemInHand());
+                            player.user.sendPacket(new WrapperPlayServerSetSlot(0, player.getInventory().stateID, 36 + player.packetStateData.lastSlotSelected, mainHand));
+                        } else {
+                            ItemStack offHand = SpigotConversionUtil.fromBukkitItemStack(player.bukkitPlayer.getInventory().getItemInOffHand());
+                            player.user.sendPacket(new WrapperPlayServerSetSlot(0, player.getInventory().stateID, 45, offHand));
+                        }
                     }
 
                 } else { // Legit place
@@ -575,7 +587,10 @@ public class CheckManagerListener extends PacketListenerAbstract {
                 blockPlace.set(StateTypes.AIR);
             }
 
-            setPlayerItem(player, hand, type);
+            if (player.gamemode != GameMode.CREATIVE) {
+                player.getInventory().markSlotAsResyncing(blockPlace);
+                setPlayerItem(player, hand, type);
+            }
         }
     }
 
@@ -707,6 +722,7 @@ public class CheckManagerListener extends PacketListenerAbstract {
                 blockPlace.set(pos, StateTypes.LILY_PAD.createBlockState(CompensatedWorld.blockVersion));
 
                 if (player.gamemode != GameMode.CREATIVE) {
+                    player.getInventory().markSlotAsResyncing(blockPlace);
                     if (hand == InteractionHand.MAIN_HAND) {
                         player.getInventory().inventory.getHeldItem().setAmount(player.getInventory().inventory.getHeldItem().getAmount() - 1);
                     } else {

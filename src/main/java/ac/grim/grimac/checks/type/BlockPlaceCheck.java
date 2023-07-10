@@ -1,5 +1,6 @@
 package ac.grim.grimac.checks.type;
 
+import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.update.BlockPlace;
 import ac.grim.grimac.utils.collisions.HitboxData;
@@ -13,9 +14,11 @@ import com.github.retrooper.packetevents.util.Vector3i;
 import java.util.ArrayList;
 import java.util.List;
 
-public class BlockPlaceCheck extends RotationCheck {
+public class BlockPlaceCheck extends Check implements RotationCheck {
     private static final List<StateType> weirdBoxes = new ArrayList<>();
     private static final List<StateType> buggyBoxes = new ArrayList<>();
+
+    protected int cancelVL;
 
     public BlockPlaceCheck(GrimPlayer player) {
         super(player);
@@ -27,6 +30,16 @@ public class BlockPlaceCheck extends RotationCheck {
 
     // Method called the flying packet after the block place
     public void onPostFlyingBlockPlace(BlockPlace place) {
+    }
+
+    @Override
+    public void reload() {
+        super.reload();
+        this.cancelVL = getConfig().getIntElse(getConfigName() + ".cancelVL", 5);
+    }
+
+    protected boolean shouldCancel() {
+        return cancelVL >= 0 && violations >= cancelVL;
     }
 
     static {

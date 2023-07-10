@@ -588,7 +588,11 @@ public class BlockPlace {
         // If a block already exists here, then we can't override it.
         WrappedBlockState existingState = player.compensatedWorld.getWrappedBlockStateAt(position);
         if (!replaceClicked && !canBeReplaced(material, existingState, face)) {
-            //Bukkit.broadcastMessage("Conflicting with existing block, returning");
+            return;
+        }
+
+        // Check for min and max bounds of world
+        if (player.compensatedWorld.getMaxHeight() <= position.getY() || position.getY() < player.compensatedWorld.getMinHeight()) {
             return;
         }
 

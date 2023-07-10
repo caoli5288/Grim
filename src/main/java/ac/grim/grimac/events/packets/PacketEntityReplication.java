@@ -1,5 +1,6 @@
 package ac.grim.grimac.events.packets;
 
+import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.type.PacketCheck;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.LogUtil;
@@ -25,7 +26,7 @@ import io.github.retrooper.packetevents.util.viaversion.ViaVersionUtil;
 import java.util.ArrayList;
 import java.util.List;
 
-public class PacketEntityReplication extends PacketCheck {
+public class PacketEntityReplication extends Check implements PacketCheck {
     private boolean hasSentPreWavePacket = true;
     // Let's imagine the player is on a boat.
     // The player breaks this boat
@@ -70,14 +71,13 @@ public class PacketEntityReplication extends PacketCheck {
                 }
             }
         }
-
-        if (event.getPacketType() == PacketType.Play.Server.PING || event.getPacketType() == PacketType.Play.Server.WINDOW_CONFIRMATION) {
-            despawnedEntitiesThisTransaction.clear();
-        }
     }
 
     @Override
     public void onPacketSend(PacketSendEvent event) {
+        if (event.getPacketType() == PacketType.Play.Server.PING || event.getPacketType() == PacketType.Play.Server.WINDOW_CONFIRMATION) {
+            despawnedEntitiesThisTransaction.clear();
+        }
         if (event.getPacketType() == PacketType.Play.Server.SPAWN_LIVING_ENTITY) {
             WrapperPlayServerSpawnLivingEntity packetOutEntity = new WrapperPlayServerSpawnLivingEntity(event);
             addEntity(packetOutEntity.getEntityId(), packetOutEntity.getEntityType(), packetOutEntity.getPosition(), packetOutEntity.getYaw(), packetOutEntity.getPitch(), packetOutEntity.getEntityMetadata(), 0);
@@ -137,7 +137,7 @@ public class PacketEntityReplication extends PacketCheck {
             }
 
             if (isDirectlyAffectingPlayer(player, effect.getEntityId()))
-                event.getPostTasks().add(player::sendTransaction);
+                event.getTasksAfterSend().add(player::sendTransaction);
 
             player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get(), () -> {
                 PacketEntity entity = player.compensatedEntities.getEntity(effect.getEntityId());
@@ -151,7 +151,7 @@ public class PacketEntityReplication extends PacketCheck {
             WrapperPlayServerRemoveEntityEffect effect = new WrapperPlayServerRemoveEntityEffect(event);
 
             if (isDirectlyAffectingPlayer(player, effect.getEntityId()))
-                event.getPostTasks().add(player::sendTransaction);
+                event.getTasksAfterSend().add(player::sendTransaction);
 
             player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get(), () -> {
                 PacketEntity entity = player.compensatedEntities.getEntity(effect.getEntityId());
@@ -324,7 +324,10 @@ public class PacketEntityReplication extends PacketCheck {
         if (!inThisVehicle && wasInVehicle) {
             player.handleDismountVehicle(event);
         }
-
+        // Better lag compensation if we were affected by this
+        if (wasInVehicle || inThisVehicle) {
+            player.sendTransaction();
+        }
         player.latencyUtils.addRealTimeTask(player.lastTransactionSent.get(), () -> {
             PacketEntity vehicle = player.compensatedEntities.getEntity(vehicleID);
 

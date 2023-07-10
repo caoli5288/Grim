@@ -1,6 +1,7 @@
 package ac.grim.grimac.checks.impl.velocity;
 
 import ac.grim.grimac.GrimAPI;
+import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PostPredictionCheck;
 import ac.grim.grimac.player.GrimPlayer;
@@ -19,7 +20,7 @@ import java.util.LinkedList;
 
 // We are making a velocity sandwich between two pieces of transaction packets (bread)
 @CheckData(name = "AntiKB", alternativeName = "AntiKnockback", configName = "Knockback", setback = 10, decay = 0.025)
-public class KnockbackHandler extends PostPredictionCheck {
+public class KnockbackHandler extends Check implements PostPredictionCheck {
     Deque<VelocityData> firstBreadMap = new LinkedList<>();
 
     Deque<VelocityData> lastKnockbackKnownTaken = new LinkedList<>();
@@ -59,7 +60,7 @@ public class KnockbackHandler extends PostPredictionCheck {
             // Wrap velocity between two transactions
             player.sendTransaction();
             addPlayerKnockback(entityId, player.lastTransactionSent.get(), new Vector(playerVelocity.getX(), playerVelocity.getY(), playerVelocity.getZ()));
-            event.getPostTasks().add(player::sendTransaction);
+            event.getTasksAfterSend().add(player::sendTransaction);
         }
     }
 
@@ -105,7 +106,7 @@ public class KnockbackHandler extends PostPredictionCheck {
         while (data != null) {
             if (data.transaction == transactionID) { // First bread knockback
                 firstBreadOnlyKnockback = new VelocityData(data.entityID, data.transaction, data.isSetback, data.vector);
-                firstBreadMap.poll();
+                //firstBreadMap.poll();
                 break; // All knockback after this will have not been applied
             } else if (data.transaction < transactionID) { // This kb has 100% arrived to the player
                 if (firstBreadOnlyKnockback != null) // Don't require kb twice

@@ -8,7 +8,7 @@ import ac.grim.grimac.utils.nmsutil.Materials;
 import com.github.retrooper.packetevents.protocol.world.states.type.StateTypes;
 import com.github.retrooper.packetevents.util.Vector3f;
 
-@CheckData(name = "Fabricated Place")
+@CheckData(name = "FabricatedPlace")
 public class FabricatedPlace extends BlockPlaceCheck {
     public FabricatedPlace(GrimPlayer player) {
         super(player);
@@ -23,7 +23,7 @@ public class FabricatedPlace extends BlockPlaceCheck {
         double minAllowed = 1 - allowed;
 
         if (cursor.getX() < minAllowed || cursor.getY() < minAllowed || cursor.getZ() < minAllowed || cursor.getX() > allowed || cursor.getY() > allowed || cursor.getZ() > allowed) {
-            if (flagAndAlert() && shouldModifyPackets()) {
+            if (flagAndAlert() && shouldModifyPackets() && shouldCancel()) {
                 place.resync();
             }
         }

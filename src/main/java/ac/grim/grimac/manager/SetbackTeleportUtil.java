@@ -1,6 +1,7 @@
 package ac.grim.grimac.manager;
 
 import ac.grim.grimac.GrimAPI;
+import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.impl.badpackets.BadPacketsN;
 import ac.grim.grimac.checks.type.PostPredictionCheck;
 import ac.grim.grimac.events.packets.patch.ResyncWorldUtil;
@@ -24,6 +25,7 @@ import com.github.retrooper.packetevents.protocol.player.GameMode;
 import com.github.retrooper.packetevents.protocol.teleport.RelativeFlag;
 import com.github.retrooper.packetevents.util.Vector3d;
 import com.github.retrooper.packetevents.wrapper.play.server.*;
+import io.github.retrooper.packetevents.util.FoliaCompatUtil;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
@@ -37,7 +39,7 @@ import java.util.HashSet;
 import java.util.Random;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-public class SetbackTeleportUtil extends PostPredictionCheck {
+public class SetbackTeleportUtil extends Check implements PostPredictionCheck {
     // Sync to netty
     public final ConcurrentLinkedQueue<TeleportData> pendingTeleports = new ConcurrentLinkedQueue<>();
     // Sync to netty, a player MUST accept a teleport to spawn into the world
@@ -70,7 +72,7 @@ public class SetbackTeleportUtil extends PostPredictionCheck {
         // If the setback isn't complete, then this position is illegitimate
         if (predictionComplete.getData().getSetback() != null) {
             // The player needs to now wait for their vehicle to go into the right place before getting back in
-            if (cheatVehicleInterpolationDelay > 0) cheatVehicleInterpolationDelay = 3;
+            if (cheatVehicleInterpolationDelay > 0) cheatVehicleInterpolationDelay = 10;
             // Teleport, let velocity be reset
             lastKnownGoodPosition = new SetbackPosWithVector(new Vector3d(player.x, player.y, player.z), afterTickFriction);
         } else if (requiredSetBack == null || requiredSetBack.isComplete()) {
@@ -183,7 +185,7 @@ public class SetbackTeleportUtil extends PostPredictionCheck {
 
         player.boundingBox = oldBB; // reset back to the new bounding box
 
-        if (!hasAcceptedSpawnTeleport) clientVel = null; // if the player hasn't spawned... don't force kb
+        if (!hasAcceptedSpawnTeleport || player.isFlying) clientVel = null; // if the player is flying or hasn't spawned... don't force kb
 
         // Something weird has occurred in the player's movement, block offsets until we resync
         if (isResync) {
@@ -218,14 +220,14 @@ public class SetbackTeleportUtil extends PostPredictionCheck {
                     player.getSetbackTeleportUtil().cheatVehicleInterpolationDelay = Integer.MAX_VALUE; // Set to max until player accepts the new position
 
                     // Make sure bukkit also knows the player got teleported out of their vehicle, can't do this async
-                    Bukkit.getScheduler().runTask(GrimAPI.INSTANCE.getPlugin(), () -> {
+                    FoliaCompatUtil.runTaskForEntity(player.bukkitPlayer, GrimAPI.INSTANCE.getPlugin(), () -> {
                         if (player.bukkitPlayer != null) {
                             Entity vehicle = player.bukkitPlayer.getVehicle();
                             if (vehicle != null) {
                                 vehicle.eject();
                             }
                         }
-                    });
+                    }, null, 0);
                 }
             }
 

@@ -37,8 +37,13 @@ public class GrimExternalAPI implements GrimAbstractAPI, Initable {
     @Getter
     private final Map<String, Function<GrimUser, String>> variableReplacements = new ConcurrentHashMap<>();
 
+    @Getter private final Map<String, String> staticReplacements = new ConcurrentHashMap<>();
+
     public String replaceVariables(GrimUser user, String content, boolean colors) {
         if (colors) content = ChatColor.translateAlternateColorCodes('&', content);
+        for (Map.Entry<String, String> entry : staticReplacements.entrySet()) {
+            content = content.replace(entry.getKey(), entry.getValue());
+        }
         for (Map.Entry<String, Function<GrimUser, String>> entry : variableReplacements.entrySet()) {
             content = content.replace(entry.getKey(), entry.getValue().apply(user));
         }
@@ -51,14 +56,20 @@ public class GrimExternalAPI implements GrimAbstractAPI, Initable {
     }
 
     @Override
+    public void registerVariable(String variable, String replacement) {
+        staticReplacements.put(variable, replacement);
+    }
+
+    @Override
     public void reload() {
         GrimAPI.INSTANCE.getConfigManager().reload();
         //Reload checks for all players
         for (GrimPlayer grimPlayer : GrimAPI.INSTANCE.getPlayerDataManager().getEntries()) {
             ChannelHelper.runInEventLoop(grimPlayer.user.getChannel(), () -> {
+                grimPlayer.onReload();
                 grimPlayer.updatePermissions();
                 grimPlayer.punishmentManager.reload();
-                for (Check value : grimPlayer.checkManager.allChecks.values()) {
+                for (AbstractCheck value : grimPlayer.checkManager.allChecks.values()) {
                     value.reload();
                 }
             });

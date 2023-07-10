@@ -37,6 +37,7 @@ import com.github.retrooper.packetevents.wrapper.play.server.*;
 import com.viaversion.viaversion.api.Via;
 import com.viaversion.viaversion.api.connection.UserConnection;
 import com.viaversion.viaversion.api.protocol.packet.PacketTracker;
+import io.github.retrooper.packetevents.util.FoliaCompatUtil;
 import io.github.retrooper.packetevents.util.viaversion.ViaVersionUtil;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -89,7 +90,6 @@ public class GrimPlayer implements GrimUser {
     public VectorData predictedVelocity = new VectorData(new Vector(), VectorData.VectorType.Normal);
     public Vector actualMovement = new Vector();
     public Vector stuckSpeedMultiplier = new Vector(1, 1, 1);
-    public Vector blockSpeedMultiplier = new Vector(1, 1, 1);
     public UncertaintyHandler uncertaintyHandler;
     public double gravity;
     public float friction;
@@ -183,8 +183,17 @@ public class GrimPlayer implements GrimUser {
     public Vector3d bedPosition;
     public long lastBlockPlaceUseItem = 0;
     public AtomicInteger cancelledPackets = new AtomicInteger(0);
+    public MainSupportingBlockData mainSupportingBlockData = new MainSupportingBlockData(null, false);
 
-    public int attackTicks;
+    public void onPacketCancel() {
+        if (cancelledPackets.incrementAndGet() > spamThreshold) {
+            LogUtil.info("Disconnecting " + getName() + " for spamming invalid packets, packets cancelled within a second " + cancelledPackets);
+            disconnect(Component.translatable("disconnect.closed"));
+            cancelledPackets.set(0);
+        }
+    }
+
+    public int totalFlyingPacketsSent;
     public Queue<BlockPlaceSnapshot> placeUseItemPackets = new LinkedBlockingQueue<>();
     // This variable is for support with test servers that want to be able to disable grim
     // Grim disabler 2022 still working!
@@ -193,6 +202,7 @@ public class GrimPlayer implements GrimUser {
     public GrimPlayer(User user) {
         this.user = user;
         this.playerUUID = user.getUUID();
+        onReload();
 
         boundingBox = GetBoundingBox.getBoundingBoxFromPosAndSize(x, y, z, 0.6f, 1.8f);
 
@@ -380,12 +390,20 @@ public class GrimPlayer implements GrimUser {
     }
 
     public void timedOut() {
+        disconnect(Component.translatable("disconnect.timeout"));
+    }
+
+    public void disconnect(Component reason) {
+        LogUtil.info("Disconnecting " + user.getProfile().getName() + " for " + reason.toString());
         try {
-            user.sendPacket(new WrapperPlayServerDisconnect(Component.translatable("disconnect.timeout")));
+            user.sendPacket(new WrapperPlayServerDisconnect(reason));
         } catch (Exception ignored) { // There may (?) be an exception if the player is in the wrong state...
-            LogUtil.warn("Failed to send disconnect packet to time out " + user.getProfile().getName() + "! Disconnecting anyways.");
+            LogUtil.warn("Failed to send disconnect packet to disconnect " + user.getProfile().getName() + "! Disconnecting anyways.");
         }
         user.closeConnection();
+        if (bukkitPlayer != null) {
+            FoliaCompatUtil.runTaskForEntity(bukkitPlayer, GrimAPI.INSTANCE.getPlugin(), () -> bukkitPlayer.kickPlayer(reason.toString()), null, 1);
+        }
     }
 
     public void pollData() {
@@ -429,8 +447,10 @@ public class GrimPlayer implements GrimUser {
         checkManager.getKnockbackHandler().setPointThree(kbPointThree);
 
         Set<VectorData> explosion = new HashSet<>();
-        if (firstBreadExplosion != null) explosion.add(new VectorData(firstBreadExplosion.vector, VectorData.VectorType.Explosion));
-        if (likelyExplosions != null) explosion.add(new VectorData(likelyExplosions.vector, VectorData.VectorType.Explosion));
+        if (firstBreadExplosion != null)
+            explosion.add(new VectorData(firstBreadExplosion.vector, VectorData.VectorType.Explosion));
+        if (likelyExplosions != null)
+            explosion.add(new VectorData(likelyExplosions.vector, VectorData.VectorType.Explosion));
 
         boolean explosionPointThree = pointThreeEstimator.determineCanSkipTick(BlockProperties.getFrictionInfluencedSpeed((float) (speed * (isSprinting ? 1.3 : 1)), this), explosion);
         checkManager.getExplosionHandler().setPointThree(explosionPointThree);
@@ -449,6 +469,12 @@ public class GrimPlayer implements GrimUser {
         if (bukkitPlayer == null) return;
         this.noModifyPacketPermission = bukkitPlayer.hasPermission("grim.nomodifypacket");
         this.noSetbackPermission = bukkitPlayer.hasPermission("grim.nosetback");
+    }
+
+    private int spamThreshold = 100;
+
+    public void onReload() {
+        spamThreshold = GrimAPI.INSTANCE.getConfigManager().getConfig().getIntElse("packet-spam-threshold", 100);
     }
 
     public boolean isPointThree() {
@@ -480,9 +506,13 @@ public class GrimPlayer implements GrimUser {
     //     - 3 ticks is a magic value, but it should buffer out incorrect predictions somewhat.
     // 2. The player is in a vehicle
     public boolean isTickingReliablyFor(int ticks) {
-        return (!uncertaintyHandler.lastPointThree.hasOccurredSince(ticks))
-                || compensatedEntities.getSelf().inVehicle()
-                || getClientVersion().isOlderThan(ClientVersion.V_1_9);
+        return (getClientVersion().isOlderThan(ClientVersion.V_1_9) 
+                || !uncertaintyHandler.lastPointThree.hasOccurredSince(ticks))
+                || compensatedEntities.getSelf().inVehicle();
+    }
+
+    public boolean canThePlayerBeCloseToZeroMovement(int ticks) {
+        return (!uncertaintyHandler.lastPointThree.hasOccurredSince(ticks));
     }
 
     public CompensatedInventory getInventory() {
@@ -573,7 +603,7 @@ public class GrimPlayer implements GrimUser {
         sendTransaction();
 
         compensatedEntities.serverPlayerVehicle = null;
-        event.getPostTasks().add(() -> {
+        event.getTasksAfterSend().add(() -> {
             if (compensatedEntities.getSelf().getRiding() != null) {
                 int ridingId = getRidingVehicleId();
                 TrackerData data = compensatedEntities.serverPositionsMap.get(ridingId);

@@ -1,10 +1,10 @@
 package ac.grim.grimac.utils.anticheat;
 
-import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.floodgate.FloodgateUtil;
 import com.github.puregero.multilib.MultiLib;
 import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.manager.server.ServerVersion;
 import com.github.retrooper.packetevents.netty.channel.ChannelHelper;
 import com.github.retrooper.packetevents.protocol.player.User;
 import io.github.retrooper.packetevents.util.GeyserUtil;
@@ -22,7 +22,7 @@ public class PlayerDataManager {
     public final Collection<User> exemptUsers = Collections.synchronizedCollection(new HashSet<>());
 
     public GrimPlayer getPlayer(final Player player) {
-        if (MultiLib.isExternalPlayer(player)) return null;
+        if (PacketEvents.getAPI().getServerManager().getVersion().isNewerThanOrEquals(ServerVersion.V_1_18) && MultiLib.isExternalPlayer(player)) return null;
 
         // Is it safe to interact with this, or is this internal PacketEvents code?
         User user = PacketEvents.getAPI().getPlayerManager().getUser(player);
@@ -61,20 +61,14 @@ public class PlayerDataManager {
 
     @Nullable
     public GrimPlayer getPlayer(final User user) {
-        // We can ignore closed channels fine because vanilla also does this
-        if (!ChannelHelper.isOpen(user.getChannel())) return null;
-
-        GrimPlayer player = playerDataMap.get(user);
-        if (player == null && shouldCheck(user)) {
-            player = new GrimPlayer(user);
-            GrimAPI.INSTANCE.getPlayerDataManager().addPlayer(user, player);
-        }
-
-        return player;
+        return playerDataMap.get(user);
     }
 
-    public void addPlayer(final User user, final GrimPlayer player) {
-        playerDataMap.put(user, player);
+    public void addUser(final User user) {
+        if (shouldCheck(user)) {
+            GrimPlayer player = new GrimPlayer(user);
+            playerDataMap.put(user, player);
+        }
     }
 
     public void remove(final User player) {

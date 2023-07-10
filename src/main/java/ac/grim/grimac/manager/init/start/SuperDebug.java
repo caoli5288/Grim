@@ -1,5 +1,6 @@
 package ac.grim.grimac.manager.init.start;
 
+import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.type.PostPredictionCheck;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.predictionengine.UncertaintyHandler;
@@ -15,7 +16,7 @@ import org.bukkit.util.Vector;
 
 import java.util.*;
 
-public final class SuperDebug extends PostPredictionCheck {
+public final class SuperDebug extends Check implements PostPredictionCheck {
     private static final StringBuilder[] flags = new StringBuilder[256]; //  17 MB of logs in memory
 
     Map<StringBuilder, Integer> continuedDebug = new HashMap<>();
@@ -69,7 +70,7 @@ public final class SuperDebug extends PostPredictionCheck {
         sb.append("\nServer Version: ");
         sb.append(PacketEvents.getAPI().getServerManager().getVersion().getReleaseName());
         sb.append("\nPing: ");
-        sb.append(player.getTransactionPing() * 0.000001);
+        sb.append(player.getTransactionPing());
         sb.append("ms\n\n");
 
         for (int i = 0; i < predicted.size(); i++) {

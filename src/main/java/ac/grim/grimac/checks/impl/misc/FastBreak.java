@@ -1,11 +1,13 @@
 package ac.grim.grimac.checks.impl.misc;
 
 import ac.grim.grimac.GrimAPI;
+import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PacketCheck;
 import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.math.GrimMath;
 import ac.grim.grimac.utils.nmsutil.BlockBreakSpeed;
+import io.github.retrooper.packetevents.util.FoliaCompatUtil;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.manager.server.ServerVersion;
@@ -13,6 +15,7 @@ import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.github.retrooper.packetevents.protocol.player.DiggingAction;
 import com.github.retrooper.packetevents.protocol.world.states.WrappedBlockState;
+import com.github.retrooper.packetevents.protocol.world.states.type.StateTypes;
 import com.github.retrooper.packetevents.util.Vector3i;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerDigging;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerFlying;
@@ -28,7 +31,7 @@ import org.bukkit.entity.Player;
 // Also based loosely off of NoCheatPlus FastBreak
 // Also based off minecraft wiki: https://minecraft.fandom.com/wiki/Breaking#Instant_breaking
 @CheckData(name = "FastBreak")
-public class FastBreak extends PacketCheck {
+public class FastBreak extends Check implements PacketCheck {
     public FastBreak(GrimPlayer playerData) {
         super(playerData);
     }
@@ -59,8 +62,16 @@ public class FastBreak extends PacketCheck {
             WrapperPlayClientPlayerDigging digging = new WrapperPlayClientPlayerDigging(event);
 
             if (digging.getAction() == DiggingAction.START_DIGGING) {
+                WrappedBlockState block = player.compensatedWorld.getWrappedBlockStateAt(digging.getBlockPosition());
+                
+                // Exempt all blocks that do not exist in the player version
+                if (WrappedBlockState.getDefaultState(player.getClientVersion(), block.getType()).getType() == StateTypes.AIR) {
+                    return;
+                }
+            
                 startBreak = System.currentTimeMillis() - (targetBlock == null ? 50 : 0); // ???
                 targetBlock = digging.getBlockPosition();
+                
                 maximumBlockDamage = BlockBreakSpeed.getBlockDamage(player, targetBlock);
 
                 double breakDelay = System.currentTimeMillis() - lastFinishBreak;
@@ -73,7 +84,7 @@ public class FastBreak extends PacketCheck {
 
                 if (blockDelayBalance > 1000 && shouldModifyPackets()) { // If more than a second of advantage
                     event.setCancelled(true); // Cancelling start digging will cause server to reject block break
-                    player.cancelledPackets.incrementAndGet();
+                    player.onPacketCancel();
                     flagAndAlert("Delay=" + breakDelay);
                 }
 
@@ -94,7 +105,7 @@ public class FastBreak extends PacketCheck {
                 }
 
                 if (blockBreakBalance > 1000) { // If more than a second of advantage
-                    Bukkit.getScheduler().runTask(GrimAPI.INSTANCE.getPlugin(), () -> {
+                    FoliaCompatUtil.runTaskForEntity(player.bukkitPlayer, GrimAPI.INSTANCE.getPlugin(), () -> {
                         Player bukkitPlayer = player.bukkitPlayer;
                         if (bukkitPlayer == null || !bukkitPlayer.isOnline()) return;
 
@@ -119,11 +130,11 @@ public class FastBreak extends PacketCheck {
                                 player.user.sendPacket(new WrapperPlayServerAcknowledgeBlockChanges(digging.getSequence())); // Make 1.19 clients apply the changes
                             }
                         }
-                    });
+                    }, null, 0);
 
                     if (flagAndAlert("Diff=" + diff + ",Balance=" + blockBreakBalance) && shouldModifyPackets()) {
                         event.setCancelled(true);
-                        player.cancelledPackets.incrementAndGet();
+                        player.onPacketCancel();
                     }
                 }
 
@@ -137,7 +148,7 @@ public class FastBreak extends PacketCheck {
     }
 
     private void clampBalance() {
-        double balance = Math.max(1000, (player.getTransactionPing() / 1e6));
+        double balance = Math.max(1000, (player.getTransactionPing()));
         blockBreakBalance = GrimMath.clamp(blockBreakBalance, -balance, balance); // Clamp not Math.max in case other logic changes
         blockDelayBalance = GrimMath.clamp(blockDelayBalance, -balance, balance);
     }

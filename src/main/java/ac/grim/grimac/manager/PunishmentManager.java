@@ -1,5 +1,6 @@
 package ac.grim.grimac.manager;
 
+import ac.grim.grimac.AbstractCheck;
 import ac.grim.grimac.GrimAPI;
 import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.events.CommandExecuteEvent;
@@ -8,6 +9,7 @@ import ac.grim.grimac.player.GrimPlayer;
 import ac.grim.grimac.utils.anticheat.LogUtil;
 import ac.grim.grimac.utils.anticheat.MessageUtil;
 import github.scarsz.configuralize.DynamicConfig;
+import io.github.retrooper.packetevents.util.FoliaCompatUtil;
 import lombok.Getter;
 import lombok.Setter;
 import org.bukkit.Bukkit;
@@ -33,7 +35,7 @@ public class PunishmentManager {
             groups.clear();
 
             // To support reloading
-            for (Check check : player.checkManager.allChecks.values()) {
+            for (AbstractCheck check : player.checkManager.allChecks.values()) {
                 check.setEnabled(false);
             }
 
@@ -45,8 +47,8 @@ public class PunishmentManager {
                 int removeViolationsAfter = (int) map.getOrDefault("remove-violations-after", 300);
 
                 List<ParsedCommand> parsed = new ArrayList<>();
-                List<Check> checksList = new ArrayList<>();
-                List<Check> excluded = new ArrayList<>();
+                List<AbstractCheck> checksList = new ArrayList<>();
+                List<AbstractCheck> excluded = new ArrayList<>();
                 for (String command : checks) {
                     command = command.toLowerCase(Locale.ROOT);
                     boolean exclude = false;
@@ -54,7 +56,7 @@ public class PunishmentManager {
                         exclude = true;
                         command = command.substring(1);
                     }
-                    for (Check check : player.checkManager.allChecks.values()) { // o(n) * o(n)?
+                    for (AbstractCheck check : player.checkManager.allChecks.values()) { // o(n) * o(n)?
                         if (check.getCheckName() != null &&
                                 (check.getCheckName().toLowerCase(Locale.ROOT).contains(command)
                                         || check.getAlternativeName().toLowerCase(Locale.ROOT).contains(command))) { // Some checks have equivalent names like AntiKB and AntiKnockback
@@ -66,7 +68,7 @@ public class PunishmentManager {
                             }
                         }
                     }
-                    for (Check check : excluded) checksList.remove(check);
+                    for (AbstractCheck check : excluded) checksList.remove(check);
                 }
 
                 for (String command : commands) {
@@ -138,27 +140,23 @@ public class PunishmentManager {
                             if (command.command.equals("[webhook]")) {
                                 String vl = group.violations.values().stream().filter((e) -> e == check).count() + "";
                                 GrimAPI.INSTANCE.getDiscordManager().sendAlert(player, verbose, check.getCheckName(), vl);
-                                continue;
-                            }
-
-                            if (command.command.equals("[proxy]") && ProxyAlertMessenger.canSendAlerts()) {
+                            } else if (command.command.equals("[proxy]")) {
                                 String proxyAlertString = GrimAPI.INSTANCE.getConfigManager().getConfig().getStringElse("alerts-format-proxy", "%prefix% &f[&cproxy&f] &f%player% &bfailed &f%check_name% &f(x&c%vl%&f) &7%verbose%");
                                 proxyAlertString = replaceAlertPlaceholders(command.getCommand(), group, check, proxyAlertString, verbose);
                                 ProxyAlertMessenger.sendPluginMessage(proxyAlertString);
-                                continue;
-                            }
-
-                            if (command.command.equals("[alert]")) {
-                                sentDebug = true;
-                                if (testMode) { // secret test mode
-                                    player.user.sendMessage(cmd);
-                                    continue;
+                            } else {
+                                if (command.command.equals("[alert]")) {
+                                    sentDebug = true;
+                                    if (testMode) { // secret test mode
+                                        player.user.sendMessage(cmd);
+                                        continue;
+                                    }
+                                    cmd = "grim sendalert " + cmd; // Not test mode, we can add the command prefix
                                 }
-                                cmd = "grim sendalert " + cmd; // Not test mode, we can add the command prefix
-                            }
 
-                            String finalCmd = cmd;
-                            Bukkit.getScheduler().runTask(GrimAPI.INSTANCE.getPlugin(), () -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCmd));
+                                String finalCmd = cmd;
+                                FoliaCompatUtil.runTask(GrimAPI.INSTANCE.getPlugin(), (dummy) -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCmd));
+                            }
                         }
 
                         command.setExecuteCount(command.getExecuteCount() + 1);
@@ -184,7 +182,7 @@ public class PunishmentManager {
 
 class PunishGroup {
     @Getter
-    List<Check> checks;
+    List<AbstractCheck> checks;
     @Getter
     List<ParsedCommand> commands;
     @Getter
@@ -192,7 +190,7 @@ class PunishGroup {
     @Getter
     int removeViolationsAfter;
 
-    public PunishGroup(List<Check> checks, List<ParsedCommand> commands, int removeViolationsAfter) {
+    public PunishGroup(List<AbstractCheck> checks, List<ParsedCommand> commands, int removeViolationsAfter) {
         this.checks = checks;
         this.commands = commands;
         this.removeViolationsAfter = removeViolationsAfter * 1000;

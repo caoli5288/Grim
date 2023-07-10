@@ -89,7 +89,7 @@ public abstract class AbstractContainerMenu {
     }
 
     public void addFourRowPlayerInventory() {
-        for (int slot = Inventory.ITEMS_START; slot <= Inventory.ITEMS_END; slot++) {
+        for (int slot = Inventory.ITEMS_START; slot < Inventory.ITEMS_END; slot++) {
             addSlot(new Slot(playerInventory.getInventoryStorage(), slot));
         }
     }
@@ -143,6 +143,7 @@ public abstract class AbstractContainerMenu {
                     this.resetQuickCraft();
                 }
             } else if (this.quickcraftStatus == 1) {
+                if (slotID < 0) return;
                 Slot slot = slots.get(slotID);
                 ItemStack itemstack = this.getCarried();
                 if (canItemQuickReplace(slot, itemstack, true) && slot.mayPlace(itemstack) && (this.quickcraftType == 2 || itemstack.getAmount() > this.quickcraftSlots.size()) && this.canDragTo(slot)) {
@@ -254,6 +255,11 @@ public abstract class AbstractContainerMenu {
             }
         } else if (clickType == WrapperPlayClientClickWindow.WindowClickType.SWAP) {
             Slot hoveringSlot = slots.get(slotID);
+
+            // How the fuck did the player SWAP with true slot 38 (chestplate?)??
+            // A vanilla client can't do this... what cheat does this?
+            // TODO: What cheat does this?
+            if (button != 40 && (button < 0 || button >= 9)) return;
 
             button = button == 40 ? Inventory.SLOT_OFFHAND : button + Inventory.HOTBAR_OFFSET;
 

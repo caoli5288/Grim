@@ -1,5 +1,6 @@
 package ac.grim.grimac.checks.impl.badpackets;
 
+import ac.grim.grimac.checks.Check;
 import ac.grim.grimac.checks.CheckData;
 import ac.grim.grimac.checks.type.PacketCheck;
 import ac.grim.grimac.player.GrimPlayer;
@@ -10,7 +11,7 @@ import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientCl
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerOpenWindow;
 
 @CheckData(name = "BadPacketsP", experimental = true)
-public class BadPacketsP extends PacketCheck {
+public class BadPacketsP extends Check implements PacketCheck {
 
     public BadPacketsP(GrimPlayer playerData) {
         super(playerData);
@@ -41,6 +42,7 @@ public class BadPacketsP extends PacketCheck {
             switch (clickType) {
                 case 0:
                 case 1:
+                case 4:
                     if (button != 0 && button != 1) flag = true;
                     break;
                 case 2:
@@ -49,7 +51,6 @@ public class BadPacketsP extends PacketCheck {
                 case 3:
                     if (button != 2) flag = true;
                     break;
-                case 4:
                 case 5:
                     if (button == 3 || button == 7 || button > 10 || button < 0) flag = true;
                     break;

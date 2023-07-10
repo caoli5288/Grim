@@ -10,6 +10,7 @@ import com.github.retrooper.packetevents.netty.channel.ChannelHelper;
 import com.github.retrooper.packetevents.protocol.world.states.WrappedBlockState;
 import com.github.retrooper.packetevents.util.Vector3i;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerMultiBlockChange;
+import io.github.retrooper.packetevents.util.FoliaCompatUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.block.Block;
@@ -19,6 +20,10 @@ import java.util.HashMap;
 
 public class ResyncWorldUtil {
     static HashMap<BlockData, Integer> blockDataToId = new HashMap<>();
+
+    public static void resyncPosition(GrimPlayer player, Vector3i pos) {
+        resyncPositions(player, pos.getX(), pos.getY(), pos.getZ(), pos.getX(), pos.getY(), pos.getZ());
+    }
 
     public static void resyncPositions(GrimPlayer player, SimpleCollisionBox box) {
         resyncPositions(player, GrimMath.floor(box.minX), GrimMath.floor(box.minY), GrimMath.floor(box.minZ),
@@ -33,7 +38,7 @@ public class ResyncWorldUtil {
 
         // Takes 0.15ms or so to complete. Not bad IMO. Unsure how I could improve this other than sending packets async.
         // But that's on PacketEvents.
-        Bukkit.getScheduler().runTask(GrimAPI.INSTANCE.getPlugin(), () -> {
+        FoliaCompatUtil.runTaskForEntity(player.bukkitPlayer, GrimAPI.INSTANCE.getPlugin(), () -> {
             boolean flat = PacketEvents.getAPI().getServerManager().getVersion().isNewerThanOrEquals(ServerVersion.V_1_13);
 
             if (player.bukkitPlayer == null) return;
@@ -74,8 +79,8 @@ public class ResyncWorldUtil {
                     Chunk chunk = player.bukkitPlayer.getWorld().getChunkAt(currChunkX, currChunkZ);
 
                     for (int currChunkY = minChunkY; currChunkY <= maxChunkY; ++currChunkY) {
-                        int minY = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
-                        int maxY = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
+                        int minY = currChunkY == minChunkY ? minBlockY & 15 : 0; // coordinate in chunk
+                        int maxY = currChunkY == maxChunkY ? maxBlockY & 15 : 15; // coordinate in chunk
 
                         int totalBlocks = (maxX - minX + 1) * (maxZ - minZ + 1) * (maxY - minY + 1);
                         WrapperPlayServerMultiBlockChange.EncodedBlock[] encodedBlocks = new WrapperPlayServerMultiBlockChange.EncodedBlock[totalBlocks];
@@ -97,7 +102,7 @@ public class ResyncWorldUtil {
                                         blockId = (block.getType().getId() << 4) | block.getData();
                                     }
 
-                                    encodedBlocks[blockIndex++] = new WrapperPlayServerMultiBlockChange.EncodedBlock(blockId, currX, currY, currZ);
+                                    encodedBlocks[blockIndex++] = new WrapperPlayServerMultiBlockChange.EncodedBlock(blockId, currX, currY | (currChunkY << 4), currZ);
                                 }
                             }
                         }
@@ -107,6 +112,6 @@ public class ResyncWorldUtil {
                     }
                 }
             }
-        });
+        }, null, 0);
     }
 }
